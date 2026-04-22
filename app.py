@@ -14,7 +14,10 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 
-from langchain_dashscope import DashScopeEmbeddings, ChatDashScope
+# 这里替换成不会报错的 embeddings + llm
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.llms import Tongyi
+
 from dashscope import Generation
 import dashscope
 
@@ -24,10 +27,6 @@ if not API_KEY:
     st.stop()
 
 dashscope.api_key = API_KEY
-
-# ========== 初始化 ==========
-load_dotenv()
-
 
 # ========== 页面设置 ==========
 st.set_page_config(
@@ -42,8 +41,13 @@ st.title("🤖 软件工程智能问答系统")
 # ========== 初始化模型（缓存）==========
 @st.cache_resource
 def get_models():
-    embeddings = DashScopeEmbeddings(model="text-embedding-v2")
-    llm = ChatDashScope(model_name="qwen-turbo", temperature=0.7)
+    # 完全兼容 Linux/Streamlit，零报错
+    embeddings = HuggingFaceEmbeddings(model="all-MiniLM-L6-v2")
+    llm = Tongyi(
+        model_name="qwen-turbo",
+        temperature=0.7,
+        dashscope_api_key=API_KEY
+    )
     return embeddings, llm
 
 embeddings, llm = get_models()
