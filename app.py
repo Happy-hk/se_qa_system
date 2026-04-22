@@ -6,7 +6,7 @@
 import streamlit as st
 import os
 from dotenv import load_dotenv
-
+load_dotenv()
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
@@ -17,7 +17,13 @@ from langchain.memory import ConversationBufferMemory
 from langchain_dashscope import DashScopeEmbeddings, ChatDashScope
 from dashscope import Generation
 import dashscope
-dashscope.api_key = "sk-fa49f2d63fcc40a184ab85993685e6c0"
+
+API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+if not API_KEY:
+    st.error("❌ 请在 .env 文件或 Streamlit Secrets 中设置 API Key")
+    st.stop()
+
+dashscope.api_key = API_KEY
 
 # ========== 初始化 ==========
 load_dotenv()
