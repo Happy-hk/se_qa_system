@@ -6,3 +6,4 @@ pypdf>=3.17.4
 dashscope>=1.14.0
 langchain-dashscope>=0.1.0
 python-dotenv>=1.0.0
+tiktoken==0.5.2
