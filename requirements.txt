@@ -5,3 +5,4 @@ chromadb==0.4.15
 pypdf==3.17.4
 dashscope==1.14.0
 python-dotenv==1.0.0
+# 关键：移除了需要pillow编译的sentence-transformers
