@@ -1,4 +1,7 @@
-langchain==0.0.350
-streamlit
+langchain==0.1.4
+langchain-community
+langchain-core
+langchain-text-splitters
 chromadb
 openai
+streamlit
