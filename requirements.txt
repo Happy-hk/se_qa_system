@@ -7,3 +7,4 @@ langchain-openai==0.0.8
 chromadb==0.4.22
 openai==1.14.0
 streamlit==1.33.0
+ 
