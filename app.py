@@ -10,8 +10,8 @@ load_dotenv()
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains import ConversationalRetrievalChain
+from langchain_text_splitter import RecursiveCharacterTextSplitter
+from langchain_chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 
 from langchain_dashscope import DashScopeEmbeddings, ChatDashScope
