@@ -1,5 +1,7 @@
-tiktoken-0.5.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
 langchain
-streamlit
+langchain-community
+langchain-core
+langchain-text-splitters
 chromadb
 openai
+streamlit
