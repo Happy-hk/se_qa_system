@@ -1,6 +1,9 @@
 streamlit
 langchain
 langchain-community
+langchain-core
+langchain-text-splitters
 langchain-openai
+langchain-chains
 chromadb
 openai
