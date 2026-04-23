@@ -11,7 +11,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_chains import ConversationalRetrievalChain
+from langchain_chain import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 
 from langchain_dashscope import DashScopeEmbeddings, ChatDashScope
