@@ -13,9 +13,9 @@ from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
-from langchain_community.llms import Tongyi
 
-from dashscope import Generation, TextEmbedding
+from langchain_dashscope import DashScopeEmbeddings, ChatDashScope
+from dashscope import Generation
 import dashscope
 
 API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
@@ -24,6 +24,9 @@ if not API_KEY:
     st.stop()
 
 dashscope.api_key = API_KEY
+
+# ========== 初始化 ==========
+
 
 # ========== 页面设置 ==========
 st.set_page_config(
@@ -38,27 +41,8 @@ st.title("🤖 软件工程智能问答系统")
 # ========== 初始化模型（缓存）==========
 @st.cache_resource
 def get_models():
-    # 改用 dashscope 原生 Embeddings，不依赖任何额外库
-    from langchain_core.embeddings import Embeddings
-    import numpy as np
-
-    class DashScopeEmbeddings(Embeddings):
-        def embed_documents(self, texts):
-            responses = []
-            for text in texts:
-                rsp = TextEmbedding.call(model="text-embedding-v2", input=text)
-                responses.append(rsp.output.embeddings[0].embedding)
-            return responses
-        
-        def embed_query(self, text):
-            return self.embed_documents([text])[0]
-
-    embeddings = DashScopeEmbeddings()
-    llm = Tongyi(
-        model_name="qwen-turbo",
-        temperature=0.7,
-        dashscope_api_key=API_KEY
-    )
+    embeddings = DashScopeEmbeddings(model="text-embedding-v2")
+    llm = ChatDashScope(model_name="qwen-turbo", temperature=0.7)
     return embeddings, llm
 
 embeddings, llm = get_models()
@@ -332,15 +316,15 @@ knowledge_base/
                     st.markdown(prompt)
                 
                 with st.chat_message("assistant", avatar="🏆"):
-                    st.spinner("🔍 检索竞赛资料...")
-                    try:
-                        docs = vectordb.similarity_search(prompt, k=4)
-                        context = "\n\n".join([
-                            f"【来源：{doc.metadata.get('source', '未知')}】\n{doc.page_content}" 
-                            for doc in docs
-                        ])
-                        
-                        system_prompt = f"""你是软件工程竞赛专家助手。请基于以下竞赛资料回答问题：
+                    with st.spinner("🔍 检索竞赛资料..."):
+                        try:
+                            docs = vectordb.similarity_search(prompt, k=4)
+                            context = "\n\n".join([
+                                f"【来源：{doc.metadata.get('source', '未知')}】\n{doc.page_content}" 
+                                for doc in docs
+                            ])
+                            
+                            system_prompt = f"""你是软件工程竞赛专家助手。请基于以下竞赛资料回答问题：
 1. 回答准确、专业，适合竞赛备赛
 2. 如涉及代码，给出完整可运行示例
 3. 如涉及算法，说明时间复杂度和适用场景
@@ -353,31 +337,31 @@ knowledge_base/
 {prompt}
 
 请详细回答："""
-                        
-                        response = Generation.call(
-                            model="qwen-turbo",
-                            messages=[{"role": "user", "content": system_prompt}],
-                            result_format="message"
-                        )
-                        answer = response.output.choices[0].message.content
-                        st.markdown(answer)
-                        
-                        with st.expander("📖 参考来源"):
-                            sources = set()
-                            for doc in docs:
-                                src = doc.metadata.get('source', '未知')
-                                cat = doc.metadata.get('category', '未分类')
-                                sources.add(f"📁 {cat} / {src}")
-                            for s in sorted(sources):
-                                st.markdown(f"- {s}")
-                        
-                        st.session_state.se_history.append({
-                            "role": "assistant", 
-                            "content": answer
-                        })
-                        
-                    except Exception as e:
-                        st.error(f"检索失败: {e}")
+                            
+                            response = Generation.call(
+                                model="qwen-turbo",
+                                messages=[{"role": "user", "content": system_prompt}],
+                                result_format="message"
+                            )
+                            answer = response.output.choices[0].message.content
+                            st.markdown(answer)
+                            
+                            with st.expander("📖 参考来源"):
+                                sources = set()
+                                for doc in docs:
+                                    src = doc.metadata.get('source', '未知')
+                                    cat = doc.metadata.get('category', '未分类')
+                                    sources.add(f"📁 {cat} / {src}")
+                                for s in sorted(sources):
+                                    st.markdown(f"- {s}")
+                            
+                            st.session_state.se_history.append({
+                                "role": "assistant", 
+                                "content": answer
+                            })
+                            
+                        except Exception as e:
+                            st.error(f"检索失败: {e}")
                             
         except Exception as e:
             st.error(f"加载知识库失败: {e}")
