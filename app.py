@@ -11,13 +11,22 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.chains import ConversationalRetrievalChain
+#from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 
 from langchain_dashscope import DashScopeEmbeddings, ChatDashScope
 from dashscope import Generation
 import dashscope
 
+try:
+    # 先尝试新版导入 (0.1.x)
+    from langchain_chains import ConversationalRetrievalChain
+    print("Loaded Chain from langchain_chains (New Version)")
+except ImportError:
+    # 如果失败，回退到旧版导入 (0.0.x)
+    from langchain.chains import ConversationalRetrievalChain
+    print("Loaded Chain from langchain.chains (Old Version)")
+    
 API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 if not API_KEY:
     st.error("❌ 请在 .env 文件或 Streamlit Secrets 中设置 API Key")
