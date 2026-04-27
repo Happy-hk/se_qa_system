@@ -138,21 +138,20 @@ elif mode == "📄 PDF上传问答":
 
         for uploaded_file in uploaded_files:
             try:
+                # 临时文件，不会污染知识库
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
                     temp_path = tmp_file.name
 
                 loader = PyPDFLoader(temp_path)
                 documents = loader.load()
-                
-                # 给每个片段打上来源文件名
+                # 给每个片段标记来源文件名
                 for doc in documents:
                     doc.metadata["source"] = uploaded_file.name
-                
                 all_documents.extend(documents)
                 file_names.append(uploaded_file.name)
-                os.unlink(temp_path)
 
+                os.unlink(temp_path)
             except Exception as e:
                 st.warning(f"⚠️ {uploaded_file.name} 解析失败: {e}")
 
@@ -163,23 +162,7 @@ elif mode == "📄 PDF上传问答":
             embeddings = DashScopeEmbeddings()
             vectordb = Chroma.from_documents(documents=texts, embedding=embeddings)
 
-            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-
-            class DashScopeLLM:
-                def __call__(self, prompt, stop=None):
-                    response = Generation.call(
-                        model="qwen-turbo",
-                        messages=[{"role": "user", "content": prompt}],
-                        result_format="message"
-                    )
-                    return response.output.choices[0].message.content
-
-            qa_chain = ConversationalRetrievalChain.from_llm(
-                llm=DashScopeLLM(),
-                retriever=vectordb.as_retriever(search_kwargs={"k": 4}),
-                memory=memory
-            )
-
+            # 渲染历史对话
             for msg in st.session_state.pdf_chat_history:
                 with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🤖"):
                     st.markdown(msg["content"])
@@ -191,20 +174,28 @@ elif mode == "📄 PDF上传问答":
 
                 with st.chat_message("assistant", avatar="🤖"):
                     with st.spinner("🔍 检索中..."):
-                        result = qa_chain.invoke({"question": prompt})
-                        answer = result["answer"]
+                        # 1. 检索相关片段
+                        docs = vectordb.similarity_search(prompt, k=4)
+                        context = "\n\n".join([
+                            f"【来源：{doc.metadata.get('source', '未知文件')}】\n{doc.page_content}"
+                            for doc in docs
+                        ])
+
+                        # 2. 直接调用 DashScope 生成回答
+                        system_prompt = f"""你是PDF问答助手，根据以下资料回答问题。
+资料：{context}
+问题：{prompt}
+要求：回答清晰准确，并在最后列出参考来源。"""
+
+                        response = Generation.call(
+                            model="qwen-turbo",
+                            messages=[{"role": "user", "content": system_prompt}],
+                            result_format="message"
+                        )
+                        answer = response.output.choices[0].message.content
+
                         st.markdown(answer)
-
-                        # ✅ 参考来源还在！
-                        with st.expander("📚 查看参考来源"):
-                            docs = vectordb.similarity_search(prompt, k=3)
-                            for i, doc in enumerate(docs, 1):
-                                source = doc.metadata.get('source', '未知文件')
-                                st.markdown(f"**片段{i}**（来自: {source}）")
-                                st.text(doc.page_content[:300] + "...")
-                                st.divider()
-
-                st.session_state.pdf_chat_history.append({"role": "assistant", "content": answer})
+                        st.session_state.pdf_chat_history.append({"role": "assistant", "content": answer})
 
 # ========== 软工竞赛专区 ==========
 elif mode == "🏆 软工竞赛专区":
