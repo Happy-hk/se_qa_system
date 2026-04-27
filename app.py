@@ -55,11 +55,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("🤖 软件工程智能问答系统")
+st.title("软件工程智能问答系统")
 
 # ========== 侧边栏 ==========
 with st.sidebar:
-    st.header("🎛️ 控制面板")
+    st.header("控制面板")
     
     mode = st.radio(
         "选择问答模式",
