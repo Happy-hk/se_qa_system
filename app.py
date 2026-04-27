@@ -9,18 +9,17 @@ from dotenv import load_dotenv
 load_dotenv()
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 
-from langchain_dashscope import DashScopeEmbeddings, ChatDashScope
+# 去掉 langchain_dashscope，改用原生 dashscope
 from dashscope import Generation
 import dashscope
 
-API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+API_KEY = st.secrets.get("DASHSCOPE_API_KEY", "")
 if not API_KEY:
-    st.error("❌ 请在 .env 文件或 Streamlit Secrets 中设置 API Key")
+    st.error("请在 Streamlit Secrets 配置 DASHSCOPE_API_KEY")
     st.stop()
 
 dashscope.api_key = API_KEY
