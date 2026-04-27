@@ -244,25 +244,62 @@ elif mode == "🏆 软工竞赛专区":
     @st.cache_resource
     def build_competition_kb():
         import glob
-        from langchain_community.document_loaders import PyPDFLoader
-        #from langchain_dashscope import DashScopeEmbeddings
+        from langchain_community.document_loaders import PyPDFLoader, TextLoader
+        import numpy as np
         
+        # 自定义 Embedding，不用装任何额外包
+        class DashScopeEmbeddings:
+            def embed_documents(self, texts):
+                embeddings = []
+                for text in texts:
+                    try:
+                        response = dashscope.Embedding.call(
+                            model="text-embedding-v2",
+                            input=text
+                        )
+                        embeddings.append(response.output['embeddings'][0]['embedding'])
+                    except:
+                        embeddings.append(np.zeros(1536))
+                return embeddings
+            def embed_query(self, text):
+                return self.embed_documents([text])[0]
+    
         all_docs = []
         embeddings = DashScopeEmbeddings()
-        
-        # 自动加载 knowledge_base 里的所有 PDF
+    
+        # ========== 加载 PDF ==========
         for pdf_path in glob.glob("knowledge_base/**/*.pdf", recursive=True):
             try:
                 loader = PyPDFLoader(pdf_path)
                 docs = loader.load()
-                # 给文档加分类标签
                 for doc in docs:
                     category = os.path.basename(os.path.dirname(pdf_path))
                     doc.metadata["category"] = category
                     doc.metadata["source"] = os.path.basename(pdf_path)
                 all_docs.extend(docs)
-            except Exception as e:
-                st.warning(f"加载 {pdf_path} 失败: {e}")
+            except:
+                pass
+    
+        # ========== 加载 TXT ==========
+        for txt_path in glob.glob("knowledge_base/**/*.txt", recursive=True):
+            try:
+                loader = TextLoader(txt_path, encoding="utf-8")
+                docs = loader.load()
+                for doc in docs:
+                    category = os.path.basename(os.path.dirname(txt_path))
+                    doc.metadata["category"] = category
+                    doc.metadata["source"] = os.path.basename(txt_path)
+                all_docs.extend(docs)
+            except:
+                pass
+
+    if not all_docs:
+        return None, None
+
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+    texts = text_splitter.split_documents(all_docs)
+    vectordb = Chroma.from_documents(documents=texts, embedding=embeddings)
+    return vectordb, embeddings
         
         if not all_docs:
             return None, None
