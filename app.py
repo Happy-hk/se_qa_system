@@ -138,6 +138,7 @@ elif mode == "📄 PDF上传问答":
         import os
 
         for uploaded_file in uploaded_files:
+            temp_path = None
             try:
                 with tempfile.NamedTemporaryFile(delete=True, suffix=".pdf") as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
@@ -152,7 +153,13 @@ elif mode == "📄 PDF上传问答":
 
             except Exception as e:
                 st.warning(f"⚠️ {uploaded_file.name} 解析失败: {e}")
-
+            finally:
+                 # 强制删除，确保文件不会残留
+                if temp_path and os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                    except:
+                        pass   
         if all_documents:
             st.success(f"✅ 成功加载 {len(file_names)} 个文件")
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
@@ -199,43 +206,53 @@ elif mode == "📄 PDF上传问答":
 elif mode == "🏆 软工竞赛专区":
     st.header("🏆 软件工程竞赛专区")
 
+    # 替换你竞赛专区里的 build_competition_kb 函数
     @st.cache_resource
     def build_competition_kb():
         import glob
         from langchain_community.document_loaders import PyPDFLoader, TextLoader
-
+        import os
+    
         all_docs = []
         embeddings = DashScopeEmbeddings()
-
+    
+        # 获取 knowledge_base 的绝对路径，避免误匹配其他文件
+        kb_root = os.path.abspath("knowledge_base")
+    
         # 加载 PDF
-        for pdf_path in glob.glob("knowledge_base/**/*.pdf", recursive=True):
+        for pdf_path in glob.glob(os.path.join(kb_root, "**", "*.pdf"), recursive=True):
+            # 关键校验：只处理在 kb_root 目录下的文件
+            if not os.path.commonpath([kb_root, os.path.abspath(pdf_path)]) == kb_root:
+                continue
             try:
                 loader = PyPDFLoader(pdf_path)
                 docs = loader.load()
                 for doc in docs:
                     category = os.path.basename(os.path.dirname(pdf_path))
-                    doc.metadata["category"] = category
+                    doc.metadata["category"] = category if category != "knowledge_base" else "未分类"
                     doc.metadata["source"] = os.path.basename(pdf_path)
                 all_docs.extend(docs)
             except:
                 pass
-
+    
         # 加载 TXT
-        for txt_path in glob.glob("knowledge_base/**/*.txt", recursive=True):
+        for txt_path in glob.glob(os.path.join(kb_root, "**", "*.txt"), recursive=True):
+            if not os.path.commonpath([kb_root, os.path.abspath(txt_path)]) == kb_root:
+                continue
             try:
                 loader = TextLoader(txt_path, encoding="utf-8")
                 docs = loader.load()
                 for doc in docs:
                     category = os.path.basename(os.path.dirname(txt_path))
-                    doc.metadata["category"] = category
+                    doc.metadata["category"] = category if category != "knowledge_base" else "未分类"
                     doc.metadata["source"] = os.path.basename(txt_path)
                 all_docs.extend(docs)
             except:
                 pass
-
+    
         if not all_docs:
             return None
-
+    
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
         texts = text_splitter.split_documents(all_docs)
         return Chroma.from_documents(documents=texts, embedding=embeddings)
