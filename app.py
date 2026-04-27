@@ -204,58 +204,55 @@ elif mode == "📄 PDF上传问答":
 # ========== 软工竞赛专区 ==========
 elif mode == "🏆 软工竞赛专区":
     st.header("🏆 软件工程竞赛专区")
-    
-import glob
-from langchain_community.document_loaders import PyPDFLoader
 
-@st.cache_resource
-def build_competition_kb():
-    all_docs = []
-    # 自动加载 knowledge_base 里的所有 PDF
-    for pdf_path in glob.glob("knowledge_base/**/*.pdf", recursive=True):
-        try:
-            loader = PyPDFLoader(pdf_path)
-            docs = loader.load()
-            # 给文档加分类标签
-            for doc in docs:
-                category = os.path.basename(os.path.dirname(pdf_path))
-                doc.metadata["category"] = category
-                doc.metadata["source"] = os.path.basename(pdf_path)
-            all_docs.extend(docs)
-        except Exception as e:
-            st.warning(f"加载 {pdf_path} 失败: {e}")
-    
-    if not all_docs:
-        return None
-    
-    # 分块并构建向量库（内存模式，不持久化）
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=100
-    )
-    texts = text_splitter.split_documents(all_docs)
-    return Chroma.from_documents(documents=texts, embedding=embeddings)
-
-vectordb = build_competition_kb()
-
-if not vectordb:
-    st.error("❌ 未找到竞赛知识库文件，请检查 knowledge_base 文件夹")
-    st.stop()
+    @st.cache_resource
+    def build_competition_kb():
+        import glob
+        from langchain_community.document_loaders import PyPDFLoader
         
-        try:
-            vectordb = load_competition_kb()
-            
-            with st.expander("📁 知识库概况", expanded=True):
-                all_docs = vectordb.get()
-                categories = {}
-                for meta in all_docs['metadatas']:
-                    cat = meta.get('category', '未分类')
-                    categories[cat] = categories.get(cat, 0) + 1
-                
-                cols = st.columns(min(len(categories), 3))
-                for i, (cat, count) in enumerate(sorted(categories.items())):
-                    with cols[i % 3]:
-                        st.metric(f"📁 {cat}", f"{count} 片段")
+        all_docs = []
+        # 自动加载 knowledge_base 里的所有 PDF
+        for pdf_path in glob.glob("knowledge_base/**/*.pdf", recursive=True):
+            try:
+                loader = PyPDFLoader(pdf_path)
+                docs = loader.load()
+                # 给文档加分类标签
+                for doc in docs:
+                    category = os.path.basename(os.path.dirname(pdf_path))
+                    doc.metadata["category"] = category
+                    doc.metadata["source"] = os.path.basename(pdf_path)
+                all_docs.extend(docs)
+            except Exception as e:
+                st.warning(f"加载 {pdf_path} 失败: {e}")
+        
+        if not all_docs:
+            return None
+        
+        # 分块并构建向量库（内存模式，不持久化）
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=800,
+            chunk_overlap=100
+        )
+        texts = text_splitter.split_documents(all_docs)
+        return Chroma.from_documents(documents=texts, embedding=embeddings)
+
+    vectordb = build_competition_kb()
+
+    if not vectordb:
+        st.error("❌ 未找到竞赛知识库文件，请检查 knowledge_base 文件夹")
+        st.stop()
+
+    with st.expander("📁 知识库概况", expanded=True):
+        all_docs = vectordb.get()
+        categories = {}
+        for meta in all_docs['metadatas']:
+            cat = meta.get('category', '未分类')
+            categories[cat] = categories.get(cat, 0) + 1
+        
+        cols = st.columns(min(len(categories), 3))
+        for i, (cat, count) in enumerate(sorted(categories.items())):
+            with cols[i % 3]:
+                st.metric(f"📁 {cat}", f"{count} 片段")
             
             st.subheader("🚀 快捷提问")
             quick_questions = [
