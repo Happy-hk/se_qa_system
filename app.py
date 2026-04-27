@@ -13,6 +13,30 @@ from langchain.memory import ConversationBufferMemory
 from dashscope import Generation
 import dashscope
 
+from langchain.embeddings.base import Embeddings
+import numpy as np
+
+# 自定义 DashScope Embeddings，不需要 langchain-dashscope
+class DashScopeEmbeddings(Embeddings):
+    def embed_documents(self, texts):
+        embeddings = []
+        for text in texts:
+            try:
+                response = dashscope.Embedding.call(
+                    model=dashscope.Embedding.Models.text_embedding_v2,
+                    input=text
+                )
+                if response.status_code == 200:
+                    embeddings.append(response.output['embeddings'][0]['embedding'])
+                else:
+                    embeddings.append(np.zeros(1536))
+            except:
+                embeddings.append(np.zeros(1536))
+        return embeddings
+
+    def embed_query(self, text):
+        return self.embed_documents([text])[0]
+
 # 从Streamlit Secrets读取密钥
 API_KEY = st.secrets.get("DASHSCOPE_API_KEY", "")
 if not API_KEY:
@@ -139,9 +163,9 @@ elif mode == "📄 PDF上传问答":
             texts = text_splitter.split_documents(all_documents)
             
             # 这里用dashscope embeddings
-            from langchain_dashscope import DashScopeEmbeddings
-            embeddings = DashScopeEmbeddings(model="text-embedding-v2")
-            
+            #from langchain_dashscope import DashScopeEmbeddings
+            #embeddings = DashScopeEmbeddings(model="text-embedding-v2")
+            embeddings = DashScopeEmbeddings()
             vectordb = Chroma.from_documents(
                 documents=texts,
                 embedding=embeddings
@@ -219,10 +243,10 @@ elif mode == "🏆 软工竞赛专区":
     def build_competition_kb():
         import glob
         from langchain_community.document_loaders import PyPDFLoader
-        from langchain_dashscope import DashScopeEmbeddings
+        #from langchain_dashscope import DashScopeEmbeddings
         
         all_docs = []
-        embeddings = DashScopeEmbeddings(model="text-embedding-v2")
+        embeddings = DashScopeEmbeddings()
         
         # 自动加载 knowledge_base 里的所有 PDF
         for pdf_path in glob.glob("knowledge_base/**/*.pdf", recursive=True):
