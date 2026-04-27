@@ -10,23 +10,14 @@ load_dotenv()
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-#from langchain.chains import ConversationalRetrievalChain
-from langchain_core.memory import ConversationBufferMemory
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
 
 from langchain_dashscope import DashScopeEmbeddings, ChatDashScope
 from dashscope import Generation
 import dashscope
 
-try:
-    # 先尝试新版导入 (0.1.x)
-    from langchain_chains import ConversationalRetrievalChain
-    print("Loaded Chain from langchain_chains (New Version)")
-except ImportError:
-    # 如果失败，回退到旧版导入 (0.0.x)
-    from langchain.chains import ConversationalRetrievalChain
-    print("Loaded Chain from langchain.chains (Old Version)")
-    
 API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 if not API_KEY:
     st.error("❌ 请在 .env 文件或 Streamlit Secrets 中设置 API Key")
@@ -34,18 +25,15 @@ if not API_KEY:
 
 dashscope.api_key = API_KEY
 
-# ========== 初始化 ==========
-
- 
 # ========== 页面设置 ==========
 st.set_page_config(
     page_title="软工智能助手",
-    page_icon="🤖",
+   # page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("🤖 软件工程智能问答系统")
+st.title("软件工程智能问答系统")
 
 # ========== 初始化模型（缓存）==========
 @st.cache_resource
@@ -58,7 +46,7 @@ embeddings, llm = get_models()
 
 # ========== 侧边栏 ==========
 with st.sidebar:
-    st.header("🎛️ 控制面板")
+    st.header(" 控制面板")
     
     mode = st.radio(
         "选择问答模式",
@@ -67,18 +55,6 @@ with st.sidebar:
     )
     
     st.divider()
-    
-    st.subheader("📊 系统状态")
-    st.success("🟢 通义千问已连接")
-    
-    if os.path.exists("./chroma_db"):
-        st.success("🟢 竞赛知识库已加载")
-    else:
-        st.warning("🟡 竞赛知识库未构建")
-        st.info("运行: python build_knowledge_base.py")
-    
-    st.divider()
-    st.caption("Powered by 通义千问 + LangChain + Streamlit")
 
 # ========== 通用问答模式 ==========
 if mode == "💬 通用问答":
@@ -93,7 +69,6 @@ if mode == "💬 通用问答":
             st.markdown(msg["content"])
     
     if prompt := st.chat_input("请输入你的问题...", key="general_input"):
-        # 添加用户消息到历史
         st.session_state.general_history.append({"role": "user", "content": prompt})
         
         with st.chat_message("user", avatar="👤"):
@@ -102,15 +77,13 @@ if mode == "💬 通用问答":
         with st.chat_message("assistant", avatar="🤖"):
             with st.spinner("🤔 思考中..."):
                 try:
-                    # 构建带历史的消息（只保留最近10轮 = 20条消息）
                     messages = []
-                    recent_history = st.session_state.general_history[-20:]  # 最近10轮
+                    recent_history = st.session_state.general_history[-20:]
                     
                     for msg in recent_history:
                         role = "user" if msg["role"] == "user" else "assistant"
                         messages.append({"role": role, "content": msg["content"]})
                     
-                    # 调用通义千问（带上下文）
                     response = Generation.call(
                         model="qwen-turbo",
                         messages=messages,
@@ -119,15 +92,14 @@ if mode == "💬 通用问答":
                     answer = response.output.choices[0].message.content
                     st.markdown(answer)
                     
-                    # 添加AI回复到历史
                     st.session_state.general_history.append({"role": "assistant", "content": answer})
                     
                 except Exception as e:
                     st.error(f"调用失败: {e}")
         
-        # 限制历史长度，防止太长（保留最近12轮，给用户一点缓冲）
         if len(st.session_state.general_history) > 24:
             st.session_state.general_history = st.session_state.general_history[-20:]
+
 elif mode == "📄 PDF上传问答":
     st.header("📄 PDF上传问答模式")
     
@@ -144,10 +116,8 @@ elif mode == "📄 PDF上传问答":
     )
     
     if uploaded_files:
-        # 每次上传都重新处理（不缓存）
         st.session_state.pdf_chat_history = []
         
-        # 清除旧的临时文件
         import glob
         for old_temp in glob.glob("temp_*.pdf"):
             try:
@@ -155,7 +125,6 @@ elif mode == "📄 PDF上传问答":
             except:
                 pass
         
-        # 保存所有新上传的文件
         all_documents = []
         file_names = []
         
@@ -183,7 +152,6 @@ elif mode == "📄 PDF上传问答":
             )
             texts = text_splitter.split_documents(all_documents)
             
-            # 内存模式向量库
             vectordb = Chroma.from_documents(
                 documents=texts,
                 embedding=embeddings
@@ -201,12 +169,10 @@ elif mode == "📄 PDF上传问答":
             
             st.info(f"📑 共切分为 {len(texts)} 个片段，可以开始提问")
             
-            # 显示历史
             for msg in st.session_state.pdf_chat_history:
                 with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🤖"):
                     st.markdown(msg["content"])
             
-            # 提问
             if prompt := st.chat_input("基于所有PDF内容提问...", key="pdf_input"):
                 st.session_state.pdf_chat_history.append({"role": "user", "content": prompt})
                 
@@ -230,12 +196,12 @@ elif mode == "📄 PDF上传问答":
                 
                 st.session_state.pdf_chat_history.append({"role": "assistant", "content": answer})
             
-            # 清理临时文件
             for temp_path in glob.glob("temp_*.pdf"):
                 try:
                     os.remove(temp_path)
                 except:
                     pass
+
 # ========== 软工竞赛专区 ==========
 elif mode == "🏆 软工竞赛专区":
     st.header("🏆 软件工程竞赛专区")
@@ -275,7 +241,7 @@ knowledge_base/
         try:
             vectordb = load_competition_kb()
             
-            with st.expander("📊 知识库概况", expanded=True):
+            with st.expander("📁 知识库概况", expanded=True):
                 all_docs = vectordb.get()
                 categories = {}
                 for meta in all_docs['metadatas']:
@@ -287,7 +253,6 @@ knowledge_base/
                     with cols[i % 3]:
                         st.metric(f"📁 {cat}", f"{count} 片段")
             
-            # 快捷问题
             st.subheader("🚀 快捷提问")
             quick_questions = [
                 "蓝桥杯常考哪些算法？",
@@ -304,16 +269,13 @@ knowledge_base/
                         st.session_state["se_chat_input"] = q
                         st.rerun()
             
-            # 初始化历史
             if "se_history" not in st.session_state:
                 st.session_state.se_history = []
             
-            # 显示历史
             for msg in st.session_state.se_history:
                 with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🏆"):
                     st.markdown(msg["content"])
             
-            # 输入框
             prompt = st.chat_input("提问软工竞赛相关问题...", key="se_chat_input")            
             if prompt:
                 if "se_input" in st.session_state:
@@ -374,6 +336,3 @@ knowledge_base/
                             
         except Exception as e:
             st.error(f"加载知识库失败: {e}")
-
-st.divider()
-st.caption("© 2024 软件工程智能助手 | 使用通义千问大模型 | 仅供学习交流")
