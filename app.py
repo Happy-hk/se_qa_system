@@ -133,25 +133,23 @@ elif mode == "📄 PDF上传问答":
         all_documents = []
         file_names = []
 
+        # 用系统临时目录，用完自动删除
         import tempfile
         import os
 
         for uploaded_file in uploaded_files:
             try:
-                # 临时文件，不会污染知识库
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                with tempfile.NamedTemporaryFile(delete=True, suffix=".pdf") as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
                     temp_path = tmp_file.name
 
-                loader = PyPDFLoader(temp_path)
-                documents = loader.load()
-                # 给每个片段标记来源文件名
-                for doc in documents:
-                    doc.metadata["source"] = uploaded_file.name
-                all_documents.extend(documents)
-                file_names.append(uploaded_file.name)
+                    loader = PyPDFLoader(temp_path)
+                    documents = loader.load()
+                    for doc in documents:
+                        doc.metadata["source"] = uploaded_file.name
+                    all_documents.extend(documents)
+                    file_names.append(uploaded_file.name)
 
-                os.unlink(temp_path)
             except Exception as e:
                 st.warning(f"⚠️ {uploaded_file.name} 解析失败: {e}")
 
@@ -162,7 +160,6 @@ elif mode == "📄 PDF上传问答":
             embeddings = DashScopeEmbeddings()
             vectordb = Chroma.from_documents(documents=texts, embedding=embeddings)
 
-            # 渲染历史对话
             for msg in st.session_state.pdf_chat_history:
                 with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🤖"):
                     st.markdown(msg["content"])
@@ -174,14 +171,12 @@ elif mode == "📄 PDF上传问答":
 
                 with st.chat_message("assistant", avatar="🤖"):
                     with st.spinner("🔍 检索中..."):
-                        # 1. 检索相关片段
                         docs = vectordb.similarity_search(prompt, k=4)
                         context = "\n\n".join([
                             f"【来源：{doc.metadata.get('source', '未知文件')}】\n{doc.page_content}"
                             for doc in docs
                         ])
 
-                        # 2. 直接调用 DashScope 生成回答
                         system_prompt = f"""你是PDF问答助手，根据以下资料回答问题。
 资料：{context}
 问题：{prompt}
@@ -195,8 +190,11 @@ elif mode == "📄 PDF上传问答":
                         answer = response.output.choices[0].message.content
 
                         st.markdown(answer)
-                        st.session_state.pdf_chat_history.append({"role": "assistant", "content": answer})
+                        with st.expander("📚 查看参考来源"):
+                            for doc in docs:
+                                st.markdown(f"- {doc.metadata.get('source', '未知文件')}")
 
+                st.session_state.pdf_chat_history.append({"role": "assistant", "content": answer})
 # ========== 软工竞赛专区 ==========
 elif mode == "🏆 软工竞赛专区":
     st.header("🏆 软件工程竞赛专区")
