@@ -264,7 +264,7 @@ elif mode == "🏆 软工竞赛专区":
             except:
                 pass
 
-        # 加载 TXT 👇 这就是你需要的！
+        # 加载 TXT
         for txt_path in glob.glob("knowledge_base/**/*.txt", recursive=True):
             try:
                 loader = TextLoader(txt_path, encoding="utf-8")
@@ -284,11 +284,10 @@ elif mode == "🏆 软工竞赛专区":
         texts = text_splitter.split_documents(all_docs)
         return Chroma.from_documents(documents=texts, embedding=embeddings)
 
-    # 👇 这里只返回一个 vectordb，不再解包！
     vectordb = build_competition_kb()
 
     if not vectordb:
-        st.error("❌ 未找到知识库文件，请检查 knowledge_base 文件夹")
+        st.warning("⚠️ 知识库为空，无法使用竞赛问答功能")
         st.stop()
 
     with st.expander("📁 知识库概况", expanded=True):
@@ -297,7 +296,7 @@ elif mode == "🏆 软工竞赛专区":
         for meta in all_docs['metadatas']:
             cat = meta.get('category', '未分类')
             categories[cat] = categories.get(cat, 0) + 1
-
+        
         cols = st.columns(min(len(categories), 3))
         for i, (cat, count) in enumerate(sorted(categories.items())):
             with cols[i % 3]:
@@ -311,37 +310,42 @@ elif mode == "🏆 软工竞赛专区":
         "软件架构设计原则",
         "如何准备软件工程竞赛？"
     ]
-
+    
     cols = st.columns(3)
     for i, q in enumerate(quick_questions):
         with cols[i % 3]:
             if st.button(q, key=f"quick_{i}"):
-                st.session_state["se_chat_input"] = q
+                st.session_state["prompt"] = q
                 st.rerun()
 
     if "se_history" not in st.session_state:
         st.session_state.se_history = []
-
+    
     for msg in st.session_state.se_history:
         with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🏆"):
             st.markdown(msg["content"])
 
+    # 【关键修复】把 chat_input 放在 rerun 之后，避免冲突
     prompt = st.chat_input("提问软工竞赛相关问题...", key="se_chat_input")
+    
+    # 支持快捷提问和手动输入
+    if "prompt" in st.session_state:
+        prompt = st.session_state.pop("prompt")
+    
     if prompt:
         st.session_state.se_history.append({"role": "user", "content": prompt})
-
         with st.chat_message("user", avatar="👤"):
             st.markdown(prompt)
-
+        
         with st.chat_message("assistant", avatar="🏆"):
             with st.spinner("🔍 检索竞赛资料..."):
                 try:
                     docs = vectordb.similarity_search(prompt, k=4)
                     context = "\n\n".join([
-                        f"【来源：{doc.metadata.get('source', '未知')}】\n{doc.page_content}"
+                        f"【来源：{doc.metadata.get('source', '未知')}】\n{doc.page_content}" 
                         for doc in docs
                     ])
-
+                    
                     system_prompt = f"""你是软件工程竞赛专家助手。请基于以下竞赛资料回答问题：
 1. 回答准确、专业，适合竞赛备赛
 2. 如涉及代码，给出完整可运行示例
@@ -355,7 +359,7 @@ elif mode == "🏆 软工竞赛专区":
 {prompt}
 
 请详细回答："""
-
+                    
                     response = Generation.call(
                         model="qwen-turbo",
                         messages=[{"role": "user", "content": system_prompt}],
@@ -363,17 +367,20 @@ elif mode == "🏆 软工竞赛专区":
                     )
                     answer = response.output.choices[0].message.content
                     st.markdown(answer)
-
+                    
                     with st.expander("📖 参考来源"):
                         sources = set()
                         for doc in docs:
                             src = doc.metadata.get('source', '未知')
-                            cat = doc.metadata.get('category', '未知')
+                            cat = doc.metadata.get('category', '未分类')
                             sources.add(f"📁 {cat} / {src}")
                         for s in sorted(sources):
                             st.markdown(f"- {s}")
-
-                    st.session_state.se_history.append({"role": "assistant", "content": answer})
-
+                    
+                    st.session_state.se_history.append({
+                        "role": "assistant", 
+                        "content": answer
+                    })
+                    
                 except Exception as e:
                     st.error(f"检索失败: {e}")
