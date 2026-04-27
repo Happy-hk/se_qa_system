@@ -244,18 +244,16 @@ elif mode == "🏆 软工竞赛专区":
     @st.cache_resource
     def build_competition_kb():
         import glob
-        from langchain_community.document_loaders import PyPDFLoader
-        #from langchain_dashscope import DashScopeEmbeddings
+        from langchain_community.document_loaders import PyPDFLoader, TextLoader
         
         all_docs = []
         embeddings = DashScopeEmbeddings()
         
-        # 自动加载 knowledge_base 里的所有 PDF
+        # 加载 PDF
         for pdf_path in glob.glob("knowledge_base/**/*.pdf", recursive=True):
             try:
                 loader = PyPDFLoader(pdf_path)
                 docs = loader.load()
-                # 给文档加分类标签
                 for doc in docs:
                     category = os.path.basename(os.path.dirname(pdf_path))
                     doc.metadata["category"] = category
@@ -264,10 +262,22 @@ elif mode == "🏆 软工竞赛专区":
             except Exception as e:
                 st.warning(f"加载 {pdf_path} 失败: {e}")
         
+        # 加载 TXT 文本文件
+        for txt_path in glob.glob("knowledge_base/**/*.txt", recursive=True):
+            try:
+                loader = TextLoader(txt_path, encoding="utf-8")
+                docs = loader.load()
+                for doc in docs:
+                    category = os.path.basename(os.path.dirname(txt_path))
+                    doc.metadata["category"] = category
+                    doc.metadata["source"] = os.path.basename(txt_path)
+                all_docs.extend(docs)
+            except Exception as e:
+                st.warning(f"加载 {txt_path} 失败: {e}")
+        
         if not all_docs:
             return None, None
         
-        # 分块并构建向量库（内存模式，不持久化）
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=800,
             chunk_overlap=100
@@ -293,7 +303,6 @@ elif mode == "🏆 软工竞赛专区":
             with cols[i % 3]:
                 st.metric(f"📁 {cat}", f"{count} 片段")
 
-    # 快捷问题
     st.subheader("🚀 快捷提问")
     quick_questions = [
         "蓝桥杯常考哪些算法？",
@@ -310,16 +319,13 @@ elif mode == "🏆 软工竞赛专区":
                 st.session_state["se_chat_input"] = q
                 st.rerun()
     
-    # 初始化历史
     if "se_history" not in st.session_state:
         st.session_state.se_history = []
     
-    # 显示历史
     for msg in st.session_state.se_history:
         with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🏆"):
             st.markdown(msg["content"])
     
-    # 输入框
     prompt = st.chat_input("提问软工竞赛相关问题...", key="se_chat_input")            
     if prompt:
         if "se_input" in st.session_state:
@@ -365,7 +371,7 @@ elif mode == "🏆 软工竞赛专区":
                         sources = set()
                         for doc in docs:
                             src = doc.metadata.get('source', '未知')
-                            cat = doc.metadata.get('category', '未分类')
+                            cat = doc.metadata.get('category', '未知')
                             sources.add(f"📁 {cat} / {src}")
                         for s in sorted(sources):
                             st.markdown(f"- {s}")
@@ -377,5 +383,3 @@ elif mode == "🏆 软工竞赛专区":
                     
                 except Exception as e:
                     st.error(f"检索失败: {e}")
-
-st.divider()
