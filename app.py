@@ -206,37 +206,42 @@ elif mode == "📄 PDF上传问答":
 elif mode == "🏆 软工竞赛专区":
     st.header("🏆 软件工程竞赛专区")
     
-    db_dir = "./chroma_db"
+import glob
+from langchain_community.document_loaders import PyPDFLoader
+
+@st.cache_resource
+def build_competition_kb():
+    all_docs = []
+    # 自动加载 knowledge_base 里的所有 PDF
+    for pdf_path in glob.glob("knowledge_base/**/*.pdf", recursive=True):
+        try:
+            loader = PyPDFLoader(pdf_path)
+            docs = loader.load()
+            # 给文档加分类标签
+            for doc in docs:
+                category = os.path.basename(os.path.dirname(pdf_path))
+                doc.metadata["category"] = category
+                doc.metadata["source"] = os.path.basename(pdf_path)
+            all_docs.extend(docs)
+        except Exception as e:
+            st.warning(f"加载 {pdf_path} 失败: {e}")
     
-    if not os.path.exists(db_dir):
-        st.error("❌ 竞赛知识库尚未构建")
-        st.markdown("""
-        ### 构建步骤：
-        1. 创建文件夹 `knowledge_base/`
-        2. 放入软工竞赛资料（PDF/TXT）
-        3. 运行：`python build_knowledge_base.py`
-        """)
-        
-        with st.expander("📁 查看推荐资料结构"):
-            st.code("""
-knowledge_base/
-├── 蓝桥杯/
-│   ├── 历年真题解析.pdf
-│   └── 常用算法模板.txt
-├── ACM/
-│   ├── 数据结构精讲.pdf
-│   └── 动态规划专题.pdf
-└── 软件工程/
-    ├── 设计模式详解.pdf
-    └── 系统架构案例.pdf
-            """)
-    else:
-        @st.cache_resource
-        def load_competition_kb():
-            return Chroma(
-                persist_directory=db_dir,
-                embedding_function=embeddings
-            )
+    if not all_docs:
+        return None
+    
+    # 分块并构建向量库（内存模式，不持久化）
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=100
+    )
+    texts = text_splitter.split_documents(all_docs)
+    return Chroma.from_documents(documents=texts, embedding=embeddings)
+
+vectordb = build_competition_kb()
+
+if not vectordb:
+    st.error("❌ 未找到竞赛知识库文件，请检查 knowledge_base 文件夹")
+    st.stop()
         
         try:
             vectordb = load_competition_kb()
