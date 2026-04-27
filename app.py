@@ -301,16 +301,7 @@ elif mode == "🏆 软工竞赛专区":
     vectordb = Chroma.from_documents(documents=texts, embedding=embeddings)
     return vectordb, embeddings
         
-        if not all_docs:
-            return None, None
-        
-        # 分块并构建向量库（内存模式，不持久化）
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=800,
-            chunk_overlap=100
-        )
-        texts = text_splitter.split_documents(all_docs)
-        return Chroma.from_documents(documents=texts, embedding=embeddings), embeddings
+   
 
     vectordb, embeddings = build_competition_kb()
 
