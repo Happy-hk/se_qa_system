@@ -28,15 +28,17 @@ class DashScopeEmbeddings(Embeddings):
                     input=text
                 )
                 if response.status_code == 200:
-                    embeddings.append(response.output['embeddings'][0]['embedding'])
+                    # 只改了这里：加了 list() 包装
+                    embeddings.append(list(response.output['embeddings'][0]['embedding']))
                 else:
-                    embeddings.append(np.zeros(1536))
+                    embeddings.append([0.0]*1536)
             except:
-                embeddings.append(np.zeros(1536))
+                embeddings.append([0.0]*1536)
         return embeddings
 
     def embed_query(self, text):
         return self.embed_documents([text])[0]
+
 # ---------------- 复制结束 ----------------
 # 从Streamlit Secrets读取密钥
 API_KEY = st.secrets.get("DASHSCOPE_API_KEY", "")
