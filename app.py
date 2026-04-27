@@ -115,129 +115,96 @@ if mode == "💬 通用问答":
 # ========== PDF上传问答模式 ==========
 elif mode == "📄 PDF上传问答":
     st.header("📄 PDF上传问答模式")
-    
+
     def clear_pdf_state():
         for key in list(st.session_state.keys()):
             if key.startswith("pdf_"):
                 del st.session_state[key]
-    
+
     uploaded_files = st.file_uploader(
-        "拖拽或点击上传PDF（支持多个）", 
+        "拖拽或点击上传PDF（支持多个）",
         type=["pdf"],
         accept_multiple_files=True,
         on_change=clear_pdf_state
     )
-    
+
     if uploaded_files:
         st.session_state.pdf_chat_history = []
-        
-        import glob
-        for old_temp in glob.glob("temp_*.pdf"):
-            try:
-                os.remove(old_temp)
-            except:
-                pass
-        
         all_documents = []
         file_names = []
-        
+
+        import tempfile
+        import os
+
         for uploaded_file in uploaded_files:
-            temp_path = f"temp_{uploaded_file.name}"
-            with open(temp_path, "wb") as f:
-                f.write(uploaded_file.getvalue())
-            
             try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                    tmp_file.write(uploaded_file.getvalue())
+                    temp_path = tmp_file.name
+
                 loader = PyPDFLoader(temp_path)
                 documents = loader.load()
+                
+                # 给每个片段打上来源文件名
+                for doc in documents:
+                    doc.metadata["source"] = uploaded_file.name
+                
                 all_documents.extend(documents)
                 file_names.append(uploaded_file.name)
+                os.unlink(temp_path)
+
             except Exception as e:
                 st.warning(f"⚠️ {uploaded_file.name} 解析失败: {e}")
-        
+
         if all_documents:
-            st.success(f"✅ 成功加载 {len(file_names)} 个文件，共 {len(all_documents)} 页")
-            st.info(f"📄 已加载: {', '.join(file_names)}")
-            
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=800,
-                chunk_overlap=100,
-                separators=["\n\n", "\n", "。", "，", " ", ""]
-            )
+            st.success(f"✅ 成功加载 {len(file_names)} 个文件")
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
             texts = text_splitter.split_documents(all_documents)
-            
-            # 这里用dashscope embeddings
-            #from langchain_dashscope import DashScopeEmbeddings
-            #embeddings = DashScopeEmbeddings(model="text-embedding-v2")
             embeddings = DashScopeEmbeddings()
-            
-            vectordb = Chroma.from_documents(
-                documents=texts,
-                embedding=embeddings
-            )
-            
-            memory = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True
-            )
-            
-            from langchain.chains import ConversationalRetrievalChain
-            from langchain.llms.base import LLM
-            
-            class DashScopeLLM(LLM):
-                @property
-                def _llm_type(self):
-                    return "dashscope"
-                
-                def _call(self, prompt, stop=None):
+            vectordb = Chroma.from_documents(documents=texts, embedding=embeddings)
+
+            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
+            class DashScopeLLM:
+                def __call__(self, prompt, stop=None):
                     response = Generation.call(
                         model="qwen-turbo",
                         messages=[{"role": "user", "content": prompt}],
                         result_format="message"
                     )
                     return response.output.choices[0].message.content
-            
-            llm = DashScopeLLM()
-            
+
             qa_chain = ConversationalRetrievalChain.from_llm(
-                llm=llm,
+                llm=DashScopeLLM(),
                 retriever=vectordb.as_retriever(search_kwargs={"k": 4}),
                 memory=memory
             )
-            
-            st.info(f"📑 共切分为 {len(texts)} 个片段，可以开始提问")
-            
+
             for msg in st.session_state.pdf_chat_history:
                 with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🤖"):
                     st.markdown(msg["content"])
-            
-            if prompt := st.chat_input("基于所有PDF内容提问...", key="pdf_input"):
+
+            if prompt := st.chat_input("针对PDF提问...", key="pdf_input"):
                 st.session_state.pdf_chat_history.append({"role": "user", "content": prompt})
-                
                 with st.chat_message("user", avatar="👤"):
                     st.markdown(prompt)
-                
+
                 with st.chat_message("assistant", avatar="🤖"):
-                    with st.spinner("🔍 检索所有文档中..."):
+                    with st.spinner("🔍 检索中..."):
                         result = qa_chain.invoke({"question": prompt})
                         answer = result["answer"]
                         st.markdown(answer)
-                        
+
+                        # ✅ 参考来源还在！
                         with st.expander("📚 查看参考来源"):
                             docs = vectordb.similarity_search(prompt, k=3)
                             for i, doc in enumerate(docs, 1):
                                 source = doc.metadata.get('source', '未知文件')
-                                page = doc.metadata.get('page', '?')
-                                st.markdown(f"**片段{i}**（来自: {source} 第{page}页）")
+                                st.markdown(f"**片段{i}**（来自: {source}）")
                                 st.text(doc.page_content[:300] + "...")
                                 st.divider()
-                
+
                 st.session_state.pdf_chat_history.append({"role": "assistant", "content": answer})
-            
-            for temp_path in glob.glob("temp_*.pdf"):
-                try:
-                    os.remove(temp_path)
-                except:
-                    pass
 
 # ========== 软工竞赛专区 ==========
 elif mode == "🏆 软工竞赛专区":
