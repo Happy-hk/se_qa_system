@@ -239,44 +239,65 @@ elif mode == "📄 PDF上传问答":
 elif mode == "🏆 软工竞赛专区":
     st.header("🏆 软件工程竞赛专区")
 
+    # 自动构建知识库（支持 TXT + PDF）
     @st.cache_resource
     def build_competition_kb():
         import glob
-        from langchain_community.document_loaders import PyPDFLoader
-        #from langchain_dashscope import DashScopeEmbeddings
-        
+        from langchain_community.document_loaders import PyPDFLoader, TextLoader
+        import numpy as np
+
+        class DashScopeEmbeddings:
+            def embed_documents(self, texts):
+                embeddings = []
+                for text in texts:
+                    try:
+                        response = dashscope.Embedding.call(
+                            model="text-embedding-v2",
+                            input=text
+                        )
+                        embeddings.append(response.output['embeddings'][0]['embedding'])
+                    except:
+                        embeddings.append(np.zeros(1536))
+                return embeddings
+            def embed_query(self, text):
+                return self.embed_documents([text])[0]
+
         all_docs = []
         embeddings = DashScopeEmbeddings()
-        
-        # 自动加载 knowledge_base 里的所有 PDF
-        for pdf_path in glob.glob("knowledge_base/**/*.pdf", recursive=True):
+
+        # 加载 PDF
+        for f in glob.glob("knowledge_base/**/*.pdf", recursive=True):
             try:
-                loader = PyPDFLoader(pdf_path)
-                docs = loader.load()
-                # 给文档加分类标签
-                for doc in docs:
-                    category = os.path.basename(os.path.dirname(pdf_path))
-                    doc.metadata["category"] = category
-                    doc.metadata["source"] = os.path.basename(pdf_path)
-                all_docs.extend(docs)
-            except Exception as e:
-                st.warning(f"加载 {pdf_path} 失败: {e}")
-        
+                docs = PyPDFLoader(f).load()
+                for d in docs:
+                    d.metadata["category"] = os.path.basename(os.path.dirname(f))
+                    d.metadata["source"] = os.path.basename(f)
+                all_docs += docs
+            except:
+                pass
+
+        # 加载 TXT
+        for f in glob.glob("knowledge_base/**/*.txt", recursive=True):
+            try:
+                docs = TextLoader(f, encoding="utf-8").load()
+                for d in docs:
+                    d.metadata["category"] = os.path.basename(os.path.dirname(f))
+                    d.metadata["source"] = os.path.basename(f)
+                all_docs += docs
+            except:
+                pass
+
         if not all_docs:
             return None, None
-        
-        # 分块并构建向量库（内存模式，不持久化）
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=800,
-            chunk_overlap=100
-        )
+
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
         texts = text_splitter.split_documents(all_docs)
-        return Chroma.from_documents(documents=texts, embedding=embeddings), embeddings
+        return Chroma.from_documents(texts, embeddings), embeddings
 
     vectordb, embeddings = build_competition_kb()
 
     if not vectordb:
-        st.error("❌ 未找到竞赛知识库文件，请检查 knowledge_base 文件夹")
+        st.error("❌ 未找到知识库文件，请检查 knowledge_base 文件夹")
         st.stop()
 
     with st.expander("📁 知识库概况", expanded=True):
@@ -285,13 +306,12 @@ elif mode == "🏆 软工竞赛专区":
         for meta in all_docs['metadatas']:
             cat = meta.get('category', '未分类')
             categories[cat] = categories.get(cat, 0) + 1
-        
+
         cols = st.columns(min(len(categories), 3))
         for i, (cat, count) in enumerate(sorted(categories.items())):
             with cols[i % 3]:
                 st.metric(f"📁 {cat}", f"{count} 片段")
 
-    # 快捷问题
     st.subheader("🚀 快捷提问")
     quick_questions = [
         "蓝桥杯常考哪些算法？",
@@ -300,80 +320,48 @@ elif mode == "🏆 软工竞赛专区":
         "软件架构设计原则",
         "如何准备软件工程竞赛？"
     ]
-    
+
     cols = st.columns(3)
     for i, q in enumerate(quick_questions):
         with cols[i % 3]:
             if st.button(q, key=f"quick_{i}"):
                 st.session_state["se_chat_input"] = q
                 st.rerun()
-    
-    # 初始化历史
+
     if "se_history" not in st.session_state:
         st.session_state.se_history = []
-    
-    # 显示历史
+
     for msg in st.session_state.se_history:
         with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🏆"):
             st.markdown(msg["content"])
-    
-    # 输入框
-    prompt = st.chat_input("提问软工竞赛相关问题...", key="se_chat_input")            
+
+    prompt = st.chat_input("提问软工竞赛相关问题...", key="se_chat_input")
     if prompt:
-        if "se_input" in st.session_state:
-            del st.session_state["se_input"]
-        
         st.session_state.se_history.append({"role": "user", "content": prompt})
-        
         with st.chat_message("user", avatar="👤"):
             st.markdown(prompt)
-        
+
         with st.chat_message("assistant", avatar="🏆"):
             with st.spinner("🔍 检索竞赛资料..."):
                 try:
                     docs = vectordb.similarity_search(prompt, k=4)
                     context = "\n\n".join([
-                        f"【来源：{doc.metadata.get('source', '未知')}】\n{doc.page_content}" 
-                        for doc in docs
+                        f"【来源：{d.metadata.get('source','未知')}】\n{d.page_content}" for d in docs
                     ])
-                    
-                    system_prompt = f"""你是软件工程竞赛专家助手。请基于以下竞赛资料回答问题：
-1. 回答准确、专业，适合竞赛备赛
-2. 如涉及代码，给出完整可运行示例
-3. 如涉及算法，说明时间复杂度和适用场景
-4. 必须注明参考来源
 
-=== 参考资料 ===
-{context}
+                    system_prompt = f"""你是软件工程竞赛专家。
+资料：{context}
+问题：{prompt}
+请准确回答。"""
 
-=== 用户问题 ===
-{prompt}
+                    res = Generation.call(model="qwen-turbo", messages=[{"role":"user","content":system_prompt}], result_format="message")
+                    ans = res.output.choices[0].message.content
+                    st.markdown(ans)
 
-请详细回答："""
-                    
-                    response = Generation.call(
-                        model="qwen-turbo",
-                        messages=[{"role": "user", "content": system_prompt}],
-                        result_format="message"
-                    )
-                    answer = response.output.choices[0].message.content
-                    st.markdown(answer)
-                    
                     with st.expander("📖 参考来源"):
-                        sources = set()
-                        for doc in docs:
-                            src = doc.metadata.get('source', '未知')
-                            cat = doc.metadata.get('category', '未分类')
-                            sources.add(f"📁 {cat} / {src}")
-                        for s in sorted(sources):
-                            st.markdown(f"- {s}")
-                    
-                    st.session_state.se_history.append({
-                        "role": "assistant", 
-                        "content": answer
-                    })
-                    
-                except Exception as e:
-                    st.error(f"检索失败: {e}")
+                        for d in docs:
+                            st.markdown(f"- 📁 {d.metadata.get('category','未知')} / {d.metadata.get('source','未知')}")
 
-st.divider()
+                    st.session_state.se_history.append({"role":"assistant","content":ans})
+                except Exception as e:
+                    st.error(f"错误：{e}")
